@@ -553,6 +553,12 @@ public:
 		else
 			shader->UploadColor(color);
 	}
+
+	virtual int getType()
+	{
+		return 0;
+	}
+
 	~Material()
 	{
 
@@ -572,6 +578,11 @@ public:
 		float intensity = (sin(T) + 1) / 2.0;
 		shader->UploadColor(color * intensity);
 	}
+
+	int getType()
+	{
+		return 10;
+	}
 };
 
 class Geometry 
@@ -585,6 +596,11 @@ public:
 	}
 
 	virtual void Draw() = 0;
+
+	virtual int getType()
+	{
+		return 0;
+	}
 
 	~Geometry()
 	{
@@ -607,6 +623,10 @@ public:
 	{
 		material->UploadAttributes();
 		geometry->Draw();
+	}
+	int getType()
+	{
+		return geometry->getType() + material->getType();
 	}
 	~Mesh()
 	{
@@ -677,6 +697,10 @@ public:
 		position = pos;
 	}
 
+	virtual int getType()
+	{
+		return mesh->getType();
+	}
 
 	~Object()
 	{
@@ -719,11 +743,17 @@ public:
 
 		shader->UploadM(M);
 	}
+
+	int getType()
+	{
+		return mesh->getType() + 20;
+	}
 	
 };
 
 class Star : public Geometry
 {
+	int type = 4;
 	unsigned int vbo;
 
 public:
@@ -768,10 +798,16 @@ public:
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLE_FAN, 0, 12);
 	}
+
+	int getType()
+	{
+		return type;
+	}
 };
 
 class Heart : public Geometry
 {
+	int type = 3;
 	unsigned int vbo;
 
 public:
@@ -807,11 +843,17 @@ public:
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLE_FAN, 0, 50);
 	}
+
+	int getType()
+	{
+		return type;
+	}
 };
 
 
 class Quad : public Geometry
 {
+	int type = 2;
 	unsigned int vbo;
 
 public:
@@ -832,6 +874,11 @@ public:
 	{
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	}
+
+	int getType()
+	{
+		return type;
 	}
 };
 
@@ -867,7 +914,9 @@ public:
 
 class Triangle : public Geometry
 {
+	int type = 1;
 	unsigned int vbo;	// vertex array object id
+
 public:	
 	Triangle()
 	{
@@ -890,6 +939,11 @@ public:
 		glDrawArrays(GL_TRIANGLES, 0, 3); // draw a single triangle with vertices defined in vao
 	}
 
+	int getType()
+	{
+		return type;
+	}
+
 };
 
 
@@ -910,7 +964,6 @@ class Scene {
 	Object* grid[10][10];
 	int x;
 	int y;
-	Object* selected;
 public:
 	Scene() { shader = 0; }
 
@@ -982,6 +1035,41 @@ public:
 		std::swap(grid[u][v], grid[x][y]);
 	}
 
+	void legal(int u, int v)
+	{
+		int type = grid[x][y]->getType();
+
+		if (v + 2 <= 9 && v - 2 >= 0 && u + 2 <= 9 && u - 2 >= 0)
+		{
+			if (type == grid[u][v + 1]->getType() && type == grid[u][v + 2]->getType() || 
+				type == grid[u][v - 1]->getType() && type == grid[u][v - 2]->getType() ||
+				type == grid[u + 1][v]->getType() && type == grid[u + 2][v]->getType() ||
+				type == grid[u - 1][v]->getType() && type == grid[u - 2][v]->getType())
+			{
+				Swap(u, v);
+			}
+
+			else if (v + 1 <= 9 && v - 1 >= 0 && u + 1 <= 9 && u - 1 >= 0)
+			{
+				if (type == grid[u][v + 1]->getType() && type == grid[u][v - 1]->getType() ||
+					type == grid[u + 1][v]->getType() && type == grid[u - 1][v]->getType())
+				{
+					Swap(u, v);
+				}
+			}
+			
+		}
+
+		/*if (v + 1 <= 9 && v - 1 >= 0 && u + 1 <= 9 && u - 1 >= 0)
+		{
+			if (type == grid[u][v + 1]->getType() && type == grid[u][v - 1]->getType() ||
+				type == grid[u + 1][v]->getType() && type == grid[u - 1][v]->getType())
+			{
+				Swap(u, v);
+			}
+		}*/
+	}
+
 	void Bomb(int u, int v) 
 	{
 		if (keyboardState[98])
@@ -1001,7 +1089,6 @@ public:
 			}
 		}
 	}
-
 
 	~Scene() {
 		for (int i = 0; i < materials.size(); i++) delete materials[i];
@@ -1077,7 +1164,8 @@ void onMouse(int button, int state, int i, int j) {
 		scene.Select(u, v);
 	else if (state == GLUT_UP)
 	{
-		scene.Swap(u, v);
+		scene.legal(u, v);
+		//scene.Swap(u, v);
 		scene.Bomb(u, v);
 	}
 	
