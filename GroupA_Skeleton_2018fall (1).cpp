@@ -253,7 +253,7 @@ void onKeyboard(unsigned char key, int x, int y)
 }
 
 
-class Shader 
+/*class Shader 
 {
 protected:
 	unsigned int shaderProgram;
@@ -348,6 +348,129 @@ public:
 	{
 		glDeleteProgram(shaderProgram);
 	}
+};*/
+
+class Shader
+{
+protected:
+	unsigned int shaderProgram;
+
+public:
+	Shader()
+	{
+		shaderProgram = 0;
+	}
+	void CompileProgram(const char *vertexSource, const char *fragmentSource) 
+	{
+		// create vertex shader from string
+		unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+		if (!vertexShader) { printf("Error in vertex shader creation\n"); exit(1); }
+
+		glShaderSource(vertexShader, 1, &vertexSource, NULL);
+		glCompileShader(vertexShader);
+		checkShader(vertexShader, "Vertex shader error");
+
+		// create fragment shader from string
+		unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+		if (!fragmentShader) { printf("Error in fragment shader creation\n"); exit(1); }
+
+		glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
+		glCompileShader(fragmentShader);
+		checkShader(fragmentShader, "Fragment shader error");
+
+		// attach shaders to a single program
+		shaderProgram = glCreateProgram();
+		if (!shaderProgram) { printf("Error in shader program creation\n"); exit(1); }
+
+		glAttachShader(shaderProgram, vertexShader);
+		glAttachShader(shaderProgram, fragmentShader);
+	}
+
+	void LinkProgram()
+	{
+		// program packaging
+		glLinkProgram(shaderProgram);
+		checkLinking(shaderProgram);
+	}
+
+	void Run()
+	{
+		glUseProgram(shaderProgram);
+	}
+	virtual void UploadColor(vec4 color)
+	{
+
+	}
+	void UploadM(mat4 M)
+	{
+		int location = glGetUniformLocation(shaderProgram, "M");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, M);
+		else printf("uniform M cannot be set\n");
+	}
+
+	virtual void UploadSamplerID()
+	{
+
+	}
+
+	~Shader()
+	{
+		glDeleteProgram(shaderProgram);
+	}
+};
+
+class StandardShader : public Shader
+{
+public: 
+	StandardShader()
+	{
+		const char *vertexSource = R"( 
+	#version 130 
+	precision highp float; 
+	
+	in vec2 vertexPosition;		// variable input from Attrib Array selected by glBindAttribLocation 
+	uniform vec3 vertexColor;
+	uniform mat4 M;
+	out vec3 color;			// output attribute 
+	
+	void main() 
+	{ 
+		color = vertexColor;				 		// set vertex color 
+		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1) * M;  	// copy position from input to output 
+	} 
+)";
+
+		const char *fragmentSource = R"( 
+	#version 130 
+	precision highp float; 
+	
+	in vec3 color;			// variable input: interpolated from the vertex colors
+	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation 
+	
+	void main() 
+	{ 
+		fragmentColor = vec4(color, 1); // extend RGB to RGBA 
+	} 
+)";
+
+		CompileProgram(vertexSource, fragmentSource);
+
+		// connect Attrib Array to input variables of the vertex shader
+		glBindAttribLocation(shaderProgram, 0, "vertexPosition"); // vertexPosition gets values from Attrib Array 0
+
+		// connect the fragmentColor to the frame buffer memory
+		glBindFragDataLocation(shaderProgram, 0, "fragmentColor"); // fragmentColor goes to the frame buffer memory
+
+		LinkProgram();
+
+	}
+
+	void UploadColor(vec4 color)
+	{
+		int location = glGetUniformLocation(shaderProgram, "vertexColor");
+		if (location >= 0) glUniform3fv(location, 1, &color.v[0]); // set uniform variable vertexColor 
+		else printf("uniform vertex color cannot be set\n");
+	}
 };
 
 class TexturedShader : public Shader
@@ -384,6 +507,14 @@ public:
 			fragmentColor = texture(samplerUnit, texCoord);
 		}
       )";
+
+		CompileProgram(vertexSource, fragmentSource);
+
+		glBindAttribLocation(shaderProgram, 0, "vertexPosition");
+		glBindAttribLocation(shaderProgram, 1, "vertexTexCoord");
+		glBindFragDataLocation(shaderProgram, 0, "fragmentColor");
+
+		LinkProgram();
 	}
 
 	void UploadSamplerID()
@@ -685,6 +816,7 @@ public:
 
 	void Draw()
 	{
+		shader->Run();
 		UploadAttributes();
 		mesh->Draw();
 	}
@@ -954,7 +1086,7 @@ Triangle triangle1;
 Triangle triangle2;*/
 
 class Scene {
-	Shader* shader;
+	StandardShader* shader;
 	TexturedShader* textureShader;
 	std::vector<Material*> materials;
 	std::vector<Geometry*> geometries;
@@ -964,12 +1096,19 @@ class Scene {
 	Object* grid[10][10];
 	int x;
 	int y;
+	Texture* asteroid;
+	Texture* fireball;
 public:
-	Scene() { shader = 0; }
+	Scene() 
+	{ 
+		shader = 0;
+		textureShader = 0;
+	}
 
 	void Initialize() {
 		
-		shader = new Shader();
+		shader = new StandardShader();
+		textureShader = new TexturedShader();
 		/*textureShader = new TexturedShader();
 		textures.push_back(new Texture("asteroid.png"));
 
@@ -979,32 +1118,38 @@ public:
 
 		meshes.push_back(new Mesh(geometries[0], materials[0]));*/
 
-
+		asteroid = new Texture("/Users/marty/Desktop/Project2/GemSwapGame/sprites/asteroid.png");
+		fireball = new Texture("/Users/marty/Desktop/Project2/GemSwapGame/sprites/fireball.png");
 
 		materials.push_back(new Material(shader, vec4(1, 0, 0)));
 		materials.push_back(new Material(shader, vec4(0, 1, 0)));
 		materials.push_back(new Material(shader, vec4(0, 0, 1)));
 		materials.push_back(new Material(shader, vec4(0, 1, 1)));
 		materials.push_back(new AnimatedMaterial(shader, vec4(1, 0, 0)));
-
+		materials.push_back(new Material(textureShader, vec4(0, 0, 0), asteroid));
+		materials.push_back(new Material(textureShader, vec4(0, 0, 0), fireball));
 
 		geometries.push_back(new Triangle());
 		geometries.push_back(new Star());
 		geometries.push_back(new Heart());
 		geometries.push_back(new Quad());
 		geometries.push_back(new Heart());
+		geometries.push_back(new TexturedQuad());
 
 		meshes.push_back(new Mesh(geometries[0], materials[2]));
 		meshes.push_back(new Mesh(geometries[1], materials[1]));
 		meshes.push_back(new Mesh(geometries[2], materials[0]));
 		meshes.push_back(new Mesh(geometries[3], materials[3]));
 		meshes.push_back(new Mesh(geometries[4], materials[4]));
+		meshes.push_back(new Mesh(geometries[5], materials[5]));
+		meshes.push_back(new Mesh(geometries[5], materials[6]));
 
-		objects.push_back(new Object(shader, meshes[0], vec2(1,-.25), vec2(0.5, 0.5), 0));
+
+		/*objects.push_back(new Object(shader, meshes[0], vec2(1,-.25), vec2(0.5, 0.5), 0));
 		objects.push_back(new Object(shader, meshes[1], vec2(0, 0), vec2(0.5, 0.5), 0));
-		objects.push_back(new Object(shader, meshes[1], vec2(0, 0), vec2(0.05, 0.05), 0));
+		objects.push_back(new Object(shader, meshes[1], vec2(0, 0), vec2(0.05, 0.05), 0));*/
 
-		for (int i = 0; i < 10; i++) {
+		/*for (int i = 0; i < 10; i++) {
 			for (int j = 0; j < 10; j++) {
 				int random = rand() % 5;
 				if (random == 1) 
@@ -1016,8 +1161,32 @@ public:
 					grid[i][j] = new Object(shader, meshes[random], vec2((float)i / 10.0, (float)j / 10.0), vec2(0.05, 0.05), 0);
 				}
 			}
+		}*/
+
+		for (int i = 0; i < 10; i++) {
+			for (int j = 0; j < 10; j++) {
+				int random = rand() % 7;
+				if (random == 6)
+				{
+					grid[i][j] = new Object(textureShader, meshes[6], vec2((float)i / 10, (float)j / 10), vec2(0.05, 0.05), 0);
+				}
+				else if (random == 5)
+				{
+					grid[i][j] = new Object(textureShader, meshes[5], vec2((float)i / 10, (float)j / 10), vec2(0.05, 0.05), 0);
+				}
+				else if (random == 1)
+				{
+					grid[i][j] = new RotatingObject(shader, meshes[1], vec2((float)i / 10, (float)j / 10), vec2(0.05, 0.05), 0);
+				}
+				else
+				{
+					grid[i][j] = new Object(shader, meshes[random], vec2((float)i / 10.0, (float)j / 10.0), vec2(0.05, 0.05), 0);
+				}
+			}
 		}
-		shader->Run();
+
+		//shader->Run();
+		//textureShader->Run();
 	}
 
 	void Select(int u, int v) 
